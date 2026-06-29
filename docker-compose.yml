@@ -1,0 +1,42 @@
+# fetcharr — Seedbox → NAS media pipeline
+#
+# Recommended location: /mnt/user/appdata/fetcharr/docker-compose.yml
+#
+# This compose file uses prebuilt images published from this repo to GHCR.
+# To use your own local source instead, see docker-compose.build.yml.
+#
+# Before first start:
+#   1. Create config dirs:
+#        mkdir -p /mnt/user/appdata/fetcharr/{seedbox-fetcher,sab-watchdog}/state
+#   2. Drop rclone.conf and your seedbox SSH key into
+#        /mnt/user/appdata/fetcharr/seedbox-fetcher/
+#   3. `docker compose up -d` will start; the fetcher will create a default
+#      config.yml on first run if one doesn't exist. Edit and restart.
+
+services:
+  seedbox-fetcher:
+    image: ghcr.io/cooper8386/fetcharr-fetcher:latest
+    container_name: seedbox-fetcher
+    restart: unless-stopped
+    environment:
+      - TZ=America/Chicago
+      - PUID=99
+      - PGID=100
+      - LOG_LEVEL=INFO
+    ports:
+      - "8765:8765"
+    volumes:
+      - /mnt/user/appdata/fetcharr/seedbox-fetcher:/config:ro
+      - /mnt/user/appdata/fetcharr/seedbox-fetcher/state:/state
+      - /mnt/user/data:/data:rw
+
+  sab-watchdog:
+    image: ghcr.io/cooper8386/fetcharr-watchdog:latest
+    container_name: sab-watchdog
+    restart: unless-stopped
+    environment:
+      - TZ=America/Chicago
+      - LOG_LEVEL=INFO
+    volumes:
+      - /mnt/user/appdata/fetcharr/sab-watchdog:/config:ro
+      - /mnt/user/appdata/fetcharr/sab-watchdog/state:/state

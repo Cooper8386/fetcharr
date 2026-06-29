@@ -1,0 +1,40 @@
+# Alternate compose file that builds the images from local source instead of
+# pulling from GHCR. Useful for development or if you don't want to use the
+# published images.
+#
+# Run from inside a checkout of this repo:
+#   docker compose -f docker-compose.build.yml up -d --build
+#
+# Or:
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+# (the build: keys override image: pulls)
+
+services:
+  seedbox-fetcher:
+    build: ./seedbox-fetcher
+    image: fetcharr-fetcher:local
+    container_name: seedbox-fetcher
+    restart: unless-stopped
+    environment:
+      - TZ=America/Chicago
+      - PUID=99
+      - PGID=100
+      - LOG_LEVEL=INFO
+    ports:
+      - "8765:8765"
+    volumes:
+      - /mnt/user/appdata/fetcharr/seedbox-fetcher:/config:ro
+      - /mnt/user/appdata/fetcharr/seedbox-fetcher/state:/state
+      - /mnt/user/data:/data:rw
+
+  sab-watchdog:
+    build: ./sab-watchdog
+    image: fetcharr-watchdog:local
+    container_name: sab-watchdog
+    restart: unless-stopped
+    environment:
+      - TZ=America/Chicago
+      - LOG_LEVEL=INFO
+    volumes:
+      - /mnt/user/appdata/fetcharr/sab-watchdog:/config:ro
+      - /mnt/user/appdata/fetcharr/sab-watchdog/state:/state

@@ -1,0 +1,44 @@
+# /etc/systemd/system/seedbox-rclone.service
+#
+# rclone SFTP mount for the seedbox. The fetcher reads from this mount to
+# discover release directories, then runs `rclone copy seedbox:...` (NOT
+# through the FUSE mount) for the actual data transfer. The mount is for
+# enumeration + stability checks; the copy goes through the rclone remote
+# directly for better throughput and resume behavior.
+#
+# Prereqs:
+#   - SSH key at /root/.ssh/id_seedbox (or wherever rclone.conf points)
+#   - rclone.conf with a [seedbox] section of type=sftp
+#
+# Install:
+#   sudo install -m 644 seedbox-rclone.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now seedbox-rclone.service
+
+[Unit]
+Description=Seedbox rclone SFTP mount
+Wants=network-online.target
+After=network-online.target
+AssertPathIsDirectory=/mnt/seedbox
+
+[Service]
+Type=notify
+ExecStartPre=/bin/mkdir -p /mnt/seedbox
+ExecStart=/usr/bin/rclone mount seedbox:/home14/onion8386 /mnt/seedbox \
+  --config /root/.config/rclone/rclone.conf \
+  --allow-other \
+  --read-only \
+  --vfs-cache-mode minimal \
+  --dir-cache-time 30s \
+  --poll-interval 30s \
+  --attr-timeout 30s \
+  --buffer-size 64M \
+  --log-file /var/log/rclone-seedbox.log \
+  --log-level INFO
+ExecStop=/bin/fusermount -uz /mnt/seedbox
+Restart=on-failure
+RestartSec=15
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target

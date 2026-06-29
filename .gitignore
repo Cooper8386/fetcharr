@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+venv/
+.venv/
+
+# Local state and secrets
+**/state/
+**/*.env
+!**/*.env.example
+**/config.yml
+!config-examples/**/config.yml
+**/rclone.conf
+**/id_seedbox
+**/id_seedbox.pub
+**/*.key
+**/*.pem
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Build artifacts
+dist/
+build/
+*.tar.gz

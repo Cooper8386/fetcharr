@@ -1,0 +1,60 @@
+# /mnt/user/appdata/seedbox-fetcher/config.yml
+# Mounted into the container read-only at /config/config.yml.
+
+# How often to poll the seedbox, in seconds.
+poll_interval: 60
+
+# A release must report the same total size and file count for this many
+# seconds before we pull. Prevents pulling half-finished torrents.
+stability_seconds: 90
+
+# Refuse to pull if the destination filesystem has less free space than this.
+min_free_gb: 50
+
+# Where the container persists its state.
+state_dir: /state
+
+# Cutoff timestamp. Anything on the seedbox whose mtime is OLDER than this is
+# treated as already-handled and never pulled. Set this to roughly the moment
+# you first set up the fetcher. Use ISO8601 with timezone offset.
+cutoff_mtime: "2026-06-29T09:30:00-05:00"
+
+rclone:
+  remote: seedbox
+  # bwlimit: "70M"
+  transfers: 4
+  checkers: 8
+
+# Apprise URLs for alerts. Empty list = log-only.
+apprise_urls: []
+  # - ntfy://ntfy.example.com/seedbox-fetcher
+
+# healthcheck_url: https://hc-ping.com/REPLACE-ME
+
+# Web UI + JSON API + Prometheus /metrics + action endpoints.
+web:
+  enabled: true
+  host: "0.0.0.0"
+  port: 8765
+
+# Optional Sonarr/Radarr history check. Off by default.
+# API keys can be inlined OR pulled from env vars as "env:VAR_NAME".
+arr_history_check:
+  enabled: false
+  grace_minutes: 60
+  instances:
+    - name: sonarr
+      url: http://192.168.5.61:8989
+      api_key: "env:SONARR_API_KEY"
+    - name: radarr
+      url: http://192.168.5.61:7878
+      api_key: "env:RADARR_API_KEY"
+
+# Routes.
+routes:
+  - name: remote-tv
+    remote_path: downloads/qbittorrent/remote-tv
+    dest: /data/torrents/remote-tv
+  - name: remote-movies
+    remote_path: downloads/qbittorrent/remote-movies
+    dest: /data/torrents/remote-movies

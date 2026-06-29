@@ -1,0 +1,14 @@
+# /mnt/user/appdata/sab-watchdog/config.yml
+
+sab_url: http://192.168.5.61:8080
+sab_api_key: REPLACE_ME
+
+poll_interval: 60         # seconds
+alert_after_min: 30       # first notification
+bounce_after_min: 45      # pause_pp + resume_pp
+restart_after_min: 75     # restart_repair
+
+apprise_urls:
+  - ntfy://ntfy.example.com/sab-watchdog
+
+# healthcheck_url: https://hc-ping.com/REPLACE-ME

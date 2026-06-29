@@ -1,0 +1,28 @@
+# /mnt/user/appdata/seedbox-fetcher/rclone.conf
+# Mounted read-only into the container at /config/rclone.conf
+#
+# Generate this on the NAS once with:
+#   rclone config
+# Pick:
+#   n) New remote
+#   name> seedbox
+#   Storage> sftp
+#   host> your.seedbox.example.com
+#   user> onion8386
+#   port> 22
+#   key_file> /root/.ssh/id_seedbox      (recommended over passwords)
+#   use_insecure_cipher> false
+#   md5sum_command> md5sum
+#   sha1sum_command> sha1sum
+#
+# Then copy ~/.config/rclone/rclone.conf here.
+
+[seedbox]
+type = sftp
+host = your.seedbox.example.com
+user = onion8386
+port = 22
+key_file = /config/id_seedbox
+shell_type = unix
+md5sum_command = md5sum
+sha1sum_command = sha1sum

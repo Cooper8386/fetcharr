@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="csrf-token" content="{{ csrf_token }}" />
+  <title>{{ title }}</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%A1%3C/text%3E%3C/svg%3E" />
+  <style>
+    :root {
+      --bg: #0e1218;
+      --bg-2: #161b25;
+      --bg-3: #1d2330;
+      --fg: #d8dde6;
+      --fg-dim: #8c96a8;
+      --accent: #6aa9ff;
+      --ok: #65d987;
+      --warn: #f7c948;
+      --err: #ff6b6b;
+      --border: #232a38;
+      --bar-bg: #1a212b;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      background: var(--bg); color: var(--fg);
+      font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", "SF Pro",
+            Roboto, system-ui, sans-serif;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    header {
+      padding: 14px 22px; background: var(--bg-2);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 16px;
+    }
+    header h1 {
+      margin: 0; font-size: 18px; letter-spacing: 0.5px; font-weight: 600;
+    }
+    header .meta { color: var(--fg-dim); font-size: 13px; }
+    header .actions { margin-left: auto; display: flex; gap: 8px; }
+    .pill {
+      display: inline-block; padding: 2px 8px; border-radius: 99px;
+      font-size: 11px; font-weight: 600; letter-spacing: 0.4px;
+      text-transform: uppercase;
+    }
+    .pill-ok { background: rgba(101, 217, 135, 0.15); color: var(--ok); }
+    .pill-err { background: rgba(255, 107, 107, 0.15); color: var(--err); }
+    .pill-warn { background: rgba(247, 201, 72, 0.15); color: var(--warn); }
+    .pill-dim { background: rgba(140, 150, 168, 0.18); color: var(--fg-dim); }
+    .pill-info { background: rgba(106, 169, 255, 0.15); color: var(--accent); }
+    button {
+      background: var(--bg-3); color: var(--fg);
+      border: 1px solid var(--border); border-radius: 6px;
+      padding: 6px 12px; font-size: 13px; cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    button:hover:not(:disabled) { background: #252c3a; border-color: #2f3849; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    button.danger { color: var(--err); border-color: rgba(255, 107, 107, 0.4); }
+    button.danger:hover:not(:disabled) {
+      background: rgba(255, 107, 107, 0.08); border-color: var(--err);
+    }
+    main { padding: 18px 22px 80px; display: grid; gap: 18px; }
+    section {
+      background: var(--bg-2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 16px 18px;
+    }
+    section h2 {
+      margin: 0 0 12px; font-size: 12px; letter-spacing: 0.6px;
+      text-transform: uppercase; color: var(--fg-dim); font-weight: 700;
+    }
+    .grid-cols-4 {
+      display: grid; gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    }
+    .stat {
+      background: var(--bg-3); border: 1px solid var(--border);
+      border-radius: 6px; padding: 10px 12px;
+    }
+    .stat .label { color: var(--fg-dim); font-size: 11px;
+                   text-transform: uppercase; letter-spacing: 0.4px; }
+    .stat .value { font-size: 18px; margin-top: 4px; font-weight: 600; }
+
+    /* Current pull */
+    .pull-empty { color: var(--fg-dim); font-style: italic; }
+    .pull-name { font-family: ui-monospace, Menlo, Consolas, monospace;
+                 font-size: 13px; word-break: break-all; margin-bottom: 8px; }
+    .progress {
+      height: 14px; background: var(--bar-bg);
+      border-radius: 99px; overflow: hidden; border: 1px solid var(--border);
+    }
+    .progress-bar {
+      height: 100%; background: linear-gradient(90deg, #4f86d6, #6aa9ff);
+      width: 0; transition: width 0.4s ease;
+    }
+    .pull-stats {
+      margin-top: 8px; color: var(--fg-dim); font-size: 13px;
+      display: flex; gap: 16px; flex-wrap: wrap;
+    }
+    .pull-stats strong { color: var(--fg); font-weight: 600; }
+
+    /* Releases table */
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td {
+      text-align: left; padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      color: var(--fg-dim); font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.4px;
+    }
+    td.name {
+      font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px;
+      word-break: break-all; max-width: 50vw;
+    }
+    td.actions { white-space: nowrap; }
+    td.actions button { padding: 3px 9px; font-size: 11px; }
+    td.numeric { font-variant-numeric: tabular-nums; color: var(--fg-dim); }
+
+    /* Logs */
+    .logs {
+      max-height: 320px; overflow: auto;
+      font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px;
+      background: var(--bg); border-radius: 6px; padding: 10px;
+      border: 1px solid var(--border);
+    }
+    .log-line { padding: 1px 0; white-space: pre-wrap; word-break: break-word; }
+    .log-line.error { color: var(--err); }
+    .log-line.warning { color: var(--warn); }
+    .log-line.info { color: var(--fg); }
+    .log-line .ts { color: var(--fg-dim); margin-right: 8px; }
+
+    /* Filters */
+    .filter-row {
+      display: flex; gap: 8px; align-items: center;
+      margin-bottom: 10px; flex-wrap: wrap;
+    }
+    .filter-row input[type=text] {
+      background: var(--bg-3); border: 1px solid var(--border);
+      color: var(--fg); padding: 5px 9px; border-radius: 5px;
+      min-width: 240px; font-size: 13px;
+    }
+    .filter-row select {
+      background: var(--bg-3); color: var(--fg);
+      border: 1px solid var(--border); border-radius: 5px;
+      padding: 5px 9px; font-size: 13px;
+    }
+    .toast {
+      position: fixed; bottom: 16px; right: 16px;
+      background: var(--bg-3); border: 1px solid var(--border);
+      padding: 10px 14px; border-radius: 6px; opacity: 0;
+      transform: translateY(8px); transition: 0.2s;
+      pointer-events: none; max-width: 320px;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast.err { border-color: rgba(255, 107, 107, 0.5); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>fetcharr</h1>
+    <span class="meta">
+      <span id="remote-pill" class="pill pill-dim">connecting</span>
+      <span id="paused-pill" class="pill pill-dim" style="display:none">paused</span>
+      <span id="last-poll" class="meta"></span>
+    </span>
+    <div class="actions">
+      <button id="btn-pause" type="button">Pause poller</button>
+      <button id="btn-resume" type="button" style="display:none">Resume poller</button>
+    </div>
+  </header>
+
+  <main>
+    <section>
+      <h2>Stats</h2>
+      <div class="grid-cols-4" id="stats">
+        <div class="stat"><div class="label">Queue depth</div><div class="value" id="s-queue">-</div></div>
+        <div class="stat"><div class="label">Pulled total</div><div class="value" id="s-ok">-</div></div>
+        <div class="stat"><div class="label">Failed</div><div class="value" id="s-fail">-</div></div>
+        <div class="stat"><div class="label">Cancelled</div><div class="value" id="s-cancel">-</div></div>
+        <div class="stat"><div class="label">Bytes pulled</div><div class="value" id="s-bytes">-</div></div>
+        <div class="stat"><div class="label">Polls</div><div class="value" id="s-polls">-</div></div>
+        <div class="stat"><div class="label">Releases tracked</div><div class="value" id="s-tracked">-</div></div>
+        <div class="stat"><div class="label">Poll errors</div><div class="value" id="s-pollerr">-</div></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Now pulling</h2>
+      <div id="current-pull">
+        <div class="pull-empty">No pull in progress.</div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Releases</h2>
+      <div class="filter-row">
+        <input type="text" id="filter-q" placeholder="filter by name..." />
+        <select id="filter-status">
+          <option value="">all statuses</option>
+          <option value="pending">pending</option>
+          <option value="pulling">pulling</option>
+          <option value="pulled">pulled</option>
+          <option value="bootstrap">bootstrap</option>
+          <option value="cutoff_skipped">cutoff_skipped</option>
+          <option value="arr_skipped">arr_skipped</option>
+          <option value="manual_skip">manual_skip</option>
+        </select>
+        <span class="meta" id="release-count"></span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Status</th>
+            <th>Release</th>
+            <th class="numeric" style="text-align:right">Size</th>
+            <th class="numeric" style="text-align:right">Last activity</th>
+            <th style="text-align:right">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="releases"></tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Recent log</h2>
+      <div class="logs" id="logs"></div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    const CSRF = document.querySelector('meta[name="csrf-token"]').content;
+
+    function humanBytes(n) {
+      if (!n) return '0 B';
+      const units = ['B','KiB','MiB','GiB','TiB'];
+      let i = 0;
+      while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+      return n.toFixed(n < 10 ? 2 : 1) + ' ' + units[i];
+    }
+    function humanSeconds(s) {
+      s = Math.max(0, Math.floor(s || 0));
+      if (s < 60) return s + 's';
+      if (s < 3600) return Math.floor(s/60) + 'm' + String(s%60).padStart(2,'0') + 's';
+      const h = Math.floor(s/3600), m = Math.floor((s%3600)/60);
+      return h + 'h' + String(m).padStart(2,'0') + 'm';
+    }
+    function fmtRelative(ts) {
+      if (!ts) return '';
+      const dt = Date.now()/1000 - ts;
+      if (dt < 60) return Math.floor(dt) + 's ago';
+      if (dt < 3600) return Math.floor(dt/60) + 'm ago';
+      if (dt < 86400) return Math.floor(dt/3600) + 'h ago';
+      return Math.floor(dt/86400) + 'd ago';
+    }
+    function fmtTime(ts) {
+      if (!ts) return '';
+      const d = new Date(ts * 1000);
+      return d.toLocaleTimeString();
+    }
+    function statusPill(status) {
+      const map = {
+        pulling: ['pill-info', 'pulling'],
+        pulled: ['pill-ok', 'pulled'],
+        bootstrap: ['pill-dim', 'bootstrap'],
+        cutoff_skipped: ['pill-dim', 'cutoff'],
+        arr_skipped: ['pill-dim', 'arr-skip'],
+        manual_skip: ['pill-dim', 'manual'],
+        pending: ['pill-warn', 'pending'],
+      };
+      const [cls, label] = map[status] || ['pill-dim', status];
+      return `<span class="pill ${cls}">${label}</span>`;
+    }
+    function toast(msg, isErr) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.toggle('err', !!isErr);
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 2500);
+    }
+
+    async function callAction(url, method='POST') {
+      try {
+        const res = await fetch(url, {
+          method,
+          headers: { 'X-CSRF-Token': CSRF, 'Accept': 'application/json' },
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          toast(body.detail || ('error ' + res.status), true);
+          return false;
+        }
+        toast('OK');
+        return true;
+      } catch (e) {
+        toast(String(e), true);
+        return false;
+      }
+    }
+
+    let filterQ = '';
+    let filterStatus = '';
+    document.getElementById('filter-q').addEventListener('input', e => {
+      filterQ = e.target.value.toLowerCase().trim();
+      render(lastSnap);
+    });
+    document.getElementById('filter-status').addEventListener('change', e => {
+      filterStatus = e.target.value;
+      render(lastSnap);
+    });
+
+    document.getElementById('btn-pause').addEventListener('click', () => {
+      callAction('/api/actions/pause');
+    });
+    document.getElementById('btn-resume').addEventListener('click', () => {
+      callAction('/api/actions/resume');
+    });
+
+    let lastSnap = null;
+
+    function render(snap) {
+      if (!snap) return;
+      lastSnap = snap;
+      const m = snap.metrics || {};
+      const cp = snap.current_pull || {};
+
+      // Header pills
+      const rPill = document.getElementById('remote-pill');
+      if (m.remote_reachable) {
+        rPill.className = 'pill pill-ok'; rPill.textContent = 'remote ok';
+      } else {
+        rPill.className = 'pill pill-err'; rPill.textContent = 'remote unreachable';
+      }
+      const pausedPill = document.getElementById('paused-pill');
+      pausedPill.style.display = snap.paused ? '' : 'none';
+      document.getElementById('btn-pause').style.display = snap.paused ? 'none' : '';
+      document.getElementById('btn-resume').style.display = snap.paused ? '' : 'none';
+
+      document.getElementById('last-poll').textContent =
+        m.last_poll_ts ? 'last poll ' + fmtRelative(m.last_poll_ts) : '';
+
+      // Stats
+      document.getElementById('s-queue').textContent = m.queue_depth ?? 0;
+      document.getElementById('s-ok').textContent = m.pulls_succeeded_total ?? 0;
+      document.getElementById('s-fail').textContent = m.pulls_failed_total ?? 0;
+      document.getElementById('s-cancel').textContent = m.pulls_cancelled_total ?? 0;
+      document.getElementById('s-bytes').textContent = humanBytes(m.bytes_pulled_total || 0);
+      document.getElementById('s-polls').textContent = m.poll_total ?? 0;
+      document.getElementById('s-pollerr').textContent = m.poll_errors_total ?? 0;
+      document.getElementById('s-tracked').textContent = (snap.releases || []).length;
+
+      // Current pull
+      const curEl = document.getElementById('current-pull');
+      if (!cp.key) {
+        curEl.innerHTML = '<div class="pull-empty">No pull in progress.</div>';
+      } else {
+        const pct = Math.min(100, Math.max(0, cp.percent || 0));
+        const elapsed = cp.started_at ? (Date.now()/1000 - cp.started_at) : 0;
+        curEl.innerHTML = `
+          <div class="pull-name">${cp.key}</div>
+          <div class="progress"><div class="progress-bar" style="width:${pct.toFixed(1)}%"></div></div>
+          <div class="pull-stats">
+            <span><strong>${pct.toFixed(1)}%</strong></span>
+            <span>${humanBytes(cp.bytes_transferred)} / ${humanBytes(cp.bytes_total)}</span>
+            <span><strong>${humanBytes(cp.speed_bps)}/s</strong></span>
+            <span>ETA ${humanSeconds(cp.eta_seconds)}</span>
+            <span>elapsed ${humanSeconds(elapsed)}</span>
+            <button class="danger" id="btn-cancel">Cancel pull</button>
+          </div>`;
+        document.getElementById('btn-cancel').addEventListener('click', () => {
+          if (confirm('Cancel current pull?')) callAction('/api/actions/cancel');
+        });
+      }
+
+      // Releases table
+      const tbody = document.getElementById('releases');
+      const all = snap.releases || [];
+      const filtered = all.filter(r => {
+        if (filterStatus && r.status !== filterStatus) return false;
+        if (filterQ && !r.key.toLowerCase().includes(filterQ)) return false;
+        return true;
+      });
+      document.getElementById('release-count').textContent =
+        filtered.length + ' of ' + all.length;
+      tbody.innerHTML = filtered.slice(0, 500).map(r => {
+        const [route, ...rest] = r.key.split('/');
+        const release = rest.join('/');
+        const canRepull = r.status === 'pulled' || r.status === 'bootstrap'
+                          || r.status === 'manual_skip' || r.status === 'cutoff_skipped'
+                          || r.status === 'arr_skipped';
+        const canMark = r.status === 'pending';
+        const last = r.pulled_at || r.last_change || r.first_seen;
+        const escName = release.replace(/'/g, "\\'");
+        return `
+          <tr>
+            <td>${statusPill(r.status)}</td>
+            <td class="name">${r.key}</td>
+            <td class="numeric" style="text-align:right">${humanBytes(r.size || 0)}</td>
+            <td class="numeric" style="text-align:right" title="${last ? new Date(last*1000).toLocaleString() : ''}">${fmtRelative(last)}</td>
+            <td class="actions" style="text-align:right">
+              ${canRepull ? `<button onclick="if(confirm('Re-pull ${escName}?')) callAction('/api/actions/repull/${route}/${encodeURIComponent(release)}')">re-pull</button>` : ''}
+              ${canMark ? `<button onclick="callAction('/api/actions/mark_pulled/${route}/${encodeURIComponent(release)}')">mark pulled</button>` : ''}
+              <button onclick="if(confirm('Forget ${escName} from state?')) callAction('/api/actions/forget/${route}/${encodeURIComponent(release)}')">forget</button>
+            </td>
+          </tr>`;
+      }).join('');
+
+      // Logs
+      const logsEl = document.getElementById('logs');
+      const lines = snap.logs || [];
+      const wasAtBottom = logsEl.scrollHeight - logsEl.clientHeight - logsEl.scrollTop < 30;
+      logsEl.innerHTML = lines.map(l =>
+        `<div class="log-line ${l.level}"><span class="ts">${fmtTime(l.ts)}</span>${l.message.replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))}</div>`
+      ).join('');
+      if (wasAtBottom) logsEl.scrollTop = logsEl.scrollHeight;
+    }
+
+    // Expose for inline handlers
+    window.callAction = callAction;
+
+    // SSE connection with reconnect-on-drop
+    function connect() {
+      const es = new EventSource('/api/events');
+      es.onmessage = (e) => {
+        try { render(JSON.parse(e.data)); } catch {}
+      };
+      es.onerror = () => {
+        es.close();
+        document.getElementById('remote-pill').textContent = 'reconnecting';
+        document.getElementById('remote-pill').className = 'pill pill-warn';
+        setTimeout(connect, 2000);
+      };
+    }
+    connect();
+  </script>
+</body>
+</html>
