@@ -120,10 +120,9 @@ def main() -> int:
     poller_thread.start()
     worker_thread.start()
 
-    web_thread = None
     if cfg.web.enabled:
         api = build_app(cfg, persistent, app_state)
-        web_thread = run_web_in_thread(api, cfg.web.host, cfg.web.port)
+        run_web_in_thread(api, cfg.web.host, cfg.web.port)
 
     def _stop(signum, frame):
         LOG.info("signal %s received, shutting down...", signum)

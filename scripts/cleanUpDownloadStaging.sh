@@ -43,7 +43,7 @@ set -uo pipefail
 # ---------- Load environment ----------
 ENV_FILE="${ENV_FILE:-/mnt/user/scripts/.cleanup.env}"
 if [[ -f "$ENV_FILE" ]]; then
-    # shellcheck disable=SC1090
+    # shellcheck source=/dev/null
     set -a; source "$ENV_FILE"; set +a
 fi
 
@@ -189,11 +189,11 @@ cleanFolder() {
     local targetFolder="$1"
     local protectedList="$2"
     local deleted=0 skipped=0 errors=0
+    local fileName
 
     log "Processing folder: $targetFolder (retention ${RETENTION_HOURS}h)"
 
     while IFS= read -r -d '' filePath; do
-        local fileName
         fileName="$(basename "$filePath")"
 
         if [[ -n "$protectedList" ]] && grep -Fxq -- "$fileName" <<<"$protectedList"; then
