@@ -38,4 +38,6 @@ jobs:
         uses: ludeeus/action-shellcheck@master
         with:
           ignore_paths: ""
-          severity: warning
+          severity: error
+          additional_files: ""
+          check_together: "yes"
