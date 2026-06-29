@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import secrets
 import threading
 from pathlib import Path
@@ -88,6 +89,7 @@ def build_app(cfg: Config, persistent: PersistentState, app_state: AppState) -> 
             "current_pull": live["current_pull"],
             "paused": live["paused"],
             "sse_seq": live["sse_seq"],
+            "speed_history": live.get("speed_history", []),
             "releases": releases,
             "logs": app_state.log_lines(n=200),
             "config_summary": {
@@ -306,7 +308,119 @@ def build_app(cfg: Config, persistent: PersistentState, app_state: AppState) -> 
         app_state.log("info", "action: poller resumed")
         return {"ok": True, "paused": False}
 
+    # ---------- config page ----------
+
+    EDITABLE = {
+        "poll_interval":     ("int", 5,    3600, "Seconds between seedbox scans"),
+        "stability_seconds": ("int", 10,   3600, "How long a release must be size-stable before pulling"),
+        "min_free_gb":       ("int", 0,    None, "Refuse to pull if free space below this"),
+        "rclone_transfers":  ("int", 1,    32,   "Parallel file transfers per rclone copy"),
+        "rclone_checkers":   ("int", 1,    64,   "Parallel checks during rclone copy"),
+        "rclone_bwlimit":    ("str", None, None, "Bandwidth limit, e.g. '70M', '0' for unlimited, or schedule string"),
+    }
+
+    def _current_value(name: str) -> Any:
+        rv = app_state.get_runtime(name, None)
+        if rv is not None:
+            return rv
+        return {
+            "poll_interval":     cfg.poll_interval,
+            "stability_seconds": cfg.stability_seconds,
+            "min_free_gb":       cfg.min_free_gb,
+            "rclone_transfers":  cfg.rclone_transfers,
+            "rclone_checkers":   cfg.rclone_checkers,
+            "rclone_bwlimit":    cfg.rclone_bwlimit or "",
+        }[name]
+
+    @api.get("/config", response_class=HTMLResponse)
+    def config_page(request: Request) -> HTMLResponse:
+        fields = []
+        for name, (kind, lo, hi, help_text) in EDITABLE.items():
+            fields.append({
+                "name": name, "kind": kind, "min": lo, "max": hi,
+                "help": help_text, "value": _current_value(name),
+            })
+        return templates.TemplateResponse(
+            request=request, name="config.html",
+            context={"csrf_token": _CSRF_TOKEN, "title": "fetcharr config", "fields": fields},
+        )
+
+    @api.get("/api/config")
+    def api_config() -> JSONResponse:
+        return JSONResponse({name: _current_value(name) for name in EDITABLE})
+
+    @api.post("/api/config")
+    async def api_config_set(request: Request) -> JSONResponse:
+        _require_csrf(await _csrf_from(request))
+        body = await request.json()
+        updates: dict = {}
+        errors: list[str] = []
+        for name, raw in body.items():
+            if name not in EDITABLE:
+                errors.append(f"unknown field: {name}")
+                continue
+            kind, lo, hi, _ = EDITABLE[name]
+            if kind == "int":
+                try:
+                    v = int(raw)
+                except (TypeError, ValueError):
+                    errors.append(f"{name}: must be an integer")
+                    continue
+                if lo is not None and v < lo:
+                    errors.append(f"{name}: must be >= {lo}")
+                    continue
+                if hi is not None and v > hi:
+                    errors.append(f"{name}: must be <= {hi}")
+                    continue
+                updates[name] = v
+            else:
+                s = (raw or "").strip() if isinstance(raw, str) else ""
+                updates[name] = s or None
+        if errors:
+            raise HTTPException(status_code=400, detail="; ".join(errors))
+        for name, v in updates.items():
+            app_state.set_runtime(**{name: v})
+            app_state.log("info", f"config: {name} = {v!r}")
+        try:
+            _persist_config_yml(updates)
+        except Exception as e:
+            app_state.log("warning",
+                f"applied changes in-memory but failed to persist to config.yml: {e}")
+            return JSONResponse({"ok": True, "applied": list(updates.keys()),
+                                 "persist_warning": str(e)})
+        return JSONResponse({"ok": True, "applied": list(updates.keys())})
+
     return api
+
+
+def _persist_config_yml(updates: dict) -> None:
+    """Rewrite /config/config.yml with the new tunable values."""
+    import yaml
+    path = Path(os.environ.get("CONFIG", "/config/config.yml"))
+    with path.open() as f:
+        raw = yaml.safe_load(f) or {}
+    if "poll_interval" in updates:
+        raw["poll_interval"] = updates["poll_interval"]
+    if "stability_seconds" in updates:
+        raw["stability_seconds"] = updates["stability_seconds"]
+    if "min_free_gb" in updates:
+        raw["min_free_gb"] = updates["min_free_gb"]
+    rclone_section = raw.get("rclone", {}) or {}
+    if "rclone_transfers" in updates:
+        rclone_section["transfers"] = updates["rclone_transfers"]
+    if "rclone_checkers" in updates:
+        rclone_section["checkers"] = updates["rclone_checkers"]
+    if "rclone_bwlimit" in updates:
+        v = updates["rclone_bwlimit"]
+        if v is None:
+            rclone_section.pop("bwlimit", None)
+        else:
+            rclone_section["bwlimit"] = v
+    raw["rclone"] = rclone_section
+    tmp = path.with_suffix(".tmp")
+    with tmp.open("w") as f:
+        yaml.safe_dump(raw, f, sort_keys=False)
+    tmp.replace(path)
 
 
 def run_web_in_thread(api: FastAPI, host: str, port: int) -> threading.Thread:

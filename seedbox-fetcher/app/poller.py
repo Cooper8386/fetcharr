@@ -77,17 +77,19 @@ def _poll_route(
     pull_q: "queue.Queue[PullJob]",
     cutoff: float | None,
     now: float,
+    stability_seconds: int,
+    min_free_gb: int,
 ) -> int:
     entries = rc.list_top_level(cfg.rclone_remote, route.remote_path)
     if not entries:
         return 0
     check_path = route.dest if route.dest.exists() else route.dest.parent
     free = free_gb(check_path)
-    if 0 <= free < cfg.min_free_gb:
+    if 0 <= free < min_free_gb:
         notifier.alert(
             "Low disk space",
             f"{route.dest} has only {free:.1f} GB free "
-            f"(<{cfg.min_free_gb} GB). Skipping {route.name}.",
+            f"(<{min_free_gb} GB). Skipping {route.name}.",
         )
         return 0
 
@@ -119,7 +121,7 @@ def _poll_route(
         entry_state = persistent.observe(key, size, count, mtime, now)
 
         stable_for = now - entry_state["last_change"]
-        if stable_for < cfg.stability_seconds:
+        if stable_for < stability_seconds:
             LOG.debug("not stable yet: %s (%ds)", key, int(stable_for))
             continue
 
@@ -178,8 +180,15 @@ def run_poller(
 ) -> None:
     LOG.info("poller starting")
     while not stop_event.is_set():
+        # Read tunables fresh each cycle so /config edits apply live.
+        poll_interval = int(app.get_runtime("poll_interval", cfg.poll_interval))
+        stability_seconds = int(
+            app.get_runtime("stability_seconds", cfg.stability_seconds)
+        )
+        min_free_gb = int(app.get_runtime("min_free_gb", cfg.min_free_gb))
+
         if app.paused:
-            stop_event.wait(timeout=cfg.poll_interval)
+            stop_event.wait(timeout=poll_interval)
             continue
         ok = True
         try:
@@ -188,7 +197,8 @@ def run_poller(
             total_queued = 0
             for route in cfg.routes:
                 total_queued += _poll_route(
-                    cfg, route, persistent, app, notifier, pull_q, cutoff, now
+                    cfg, route, persistent, app, notifier, pull_q, cutoff, now,
+                    stability_seconds, min_free_gb,
                 )
             stale = _garbage_collect(cfg, persistent)
             if total_queued or stale:
@@ -202,5 +212,5 @@ def run_poller(
             notifier.alert("Cycle crash", repr(e))
             notifier.heartbeat(ok=False)
         app.record_poll(ok)
-        stop_event.wait(timeout=cfg.poll_interval)
+        stop_event.wait(timeout=poll_interval)
     LOG.info("poller stopping")

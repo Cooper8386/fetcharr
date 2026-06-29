@@ -26,7 +26,11 @@ services:
     ports:
       - "8765:8765"
     volumes:
-      - /mnt/user/appdata/fetcharr/seedbox-fetcher:/config:ro
+      # Note: /config is mounted RW so the in-UI config page can persist
+      # changes back to /config/config.yml. If you'd rather lock config.yml
+      # to file-only edits, change :rw to :ro - changes will still apply
+      # in-memory but won't survive container restarts.
+      - /mnt/user/appdata/fetcharr/seedbox-fetcher:/config:rw
       - /mnt/user/appdata/fetcharr/seedbox-fetcher/state:/state
       - /mnt/user/data:/data:rw
 

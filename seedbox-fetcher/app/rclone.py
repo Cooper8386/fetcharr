@@ -83,30 +83,48 @@ def release_stats(remote: str, remote_path: str, is_dir: bool) -> tuple[int, int
 
 # ---------- live copy ----------
 
+# Accept all the unit forms rclone might emit.
 _UNIT_TO_BYTES = {
-    "B": 1, "KiB": 1024, "MiB": 1024**2, "GiB": 1024**3, "TiB": 1024**4,
-    "KB": 1000, "MB": 1000**2, "GB": 1000**3, "TB": 1000**4,
+    "B": 1, "Bytes": 1,
+    "KiB": 1024, "MiB": 1024**2, "GiB": 1024**3, "TiB": 1024**4, "PiB": 1024**5,
+    "KB": 1000, "MB": 1000**2, "GB": 1000**3, "TB": 1000**4, "PB": 1000**5,
+    "KBytes": 1000, "MBytes": 1000**2, "GBytes": 1000**3,
+    "TBytes": 1000**4, "PBytes": 1000**5,
 }
 
+# Matches both short-form ("12.3 GiB / 91.4 GiB, 13%, 67.2 MiB/s, ETA 19m45s")
+# and long-form ("0 / 73.84 GBytes, 0%, 0 Bytes/s, ETA -") with optional
+# log decoration like "2026/06/29 16:23:01 NOTICE: Transferred: ...".
 _STATS_RE = re.compile(
     r"Transferred:\s*"
-    r"([\d.]+)\s*([KMGTP]i?B|B)\s*/\s*"
-    r"([\d.]+)\s*([KMGTP]i?B|B)\s*,\s*"
-    r"([\d.]+|-)\s*%\s*,\s*"
-    r"([\d.]+)\s*([KMGTP]i?B|B)/s"
-    r"(?:\s*,\s*ETA\s*([0-9hms:-]+))?"
+    # transferred amount (number + optional unit)
+    r"([\d.]+)\s*([KMGTP]i?B(?:ytes)?|Bytes|B)?\s*/\s*"
+    # total amount
+    r"([\d.]+)\s*([KMGTP]i?B(?:ytes)?|Bytes|B)\s*,\s*"
+    # percent
+    r"(\d+(?:\.\d+)?|-)\s*%"
+    # optional speed
+    r"(?:\s*,\s*(\d+(?:\.\d+)?|-)\s*([KMGTP]i?B(?:ytes)?|Bytes|B)/s)?"
+    # optional ETA
+    r"(?:\s*,\s*ETA\s*([0-9hmsd:-]+))?"
 )
 
 
-def _to_bytes(value: float, unit: str) -> int:
-    return int(value * _UNIT_TO_BYTES.get(unit, 1))
+def _to_bytes(value: str | float | None, unit: str | None) -> int:
+    if value is None or value == "-":
+        return 0
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return 0
+    return int(v * _UNIT_TO_BYTES.get(unit or "B", 1))
 
 
 def _eta_to_seconds(s: str | None) -> int:
     if not s or s == "-":
         return 0
     total = 0
-    for part, mult in [("h", 3600), ("m", 60), ("s", 1)]:
+    for part, mult in [("d", 86400), ("h", 3600), ("m", 60), ("s", 1)]:
         if part in s:
             chunk, _, s = s.partition(part)
             try:
@@ -121,14 +139,20 @@ def parse_stats_line(line: str) -> dict | None:
     if not m:
         return None
     t_val, t_unit, total_val, total_unit, pct_str, sp_val, sp_unit, eta = m.groups()
-    transferred = _to_bytes(float(t_val), t_unit)
-    total = _to_bytes(float(total_val), total_unit)
+    # A line like "Transferred:  20 / 22, 91%" has no units; that's the file-count
+    # progress line, not bytes. Ignore those.
+    if t_unit is None and total_unit is None:
+        return None
+    transferred = _to_bytes(t_val, t_unit)
+    total = _to_bytes(total_val, total_unit)
     try:
-        pct = float(pct_str)
-    except ValueError:
+        pct = float(pct_str) if pct_str != "-" else (
+            (transferred / total * 100.0) if total else 0.0
+        )
+    except (TypeError, ValueError):
         pct = (transferred / total * 100.0) if total else 0.0
-    speed_bps = _to_bytes(float(sp_val), sp_unit)
-    eta_sec = _eta_to_seconds(eta) if eta else 0
+    speed_bps = _to_bytes(sp_val, sp_unit)
+    eta_sec = _eta_to_seconds(eta)
     return {
         "bytes_transferred": transferred,
         "bytes_total": total,
@@ -188,10 +212,11 @@ class RcloneCopy:
             "--checkers", str(self.checkers),
             "--retries", "5",
             "--low-level-retries", "10",
-            "--stats", "2s",
+            "--stats", "1s",
             "--stats-one-line",
             "--stats-log-level", "NOTICE",
             "--use-mmap",
+            "--progress-terminal-title=false",
         ]
         if self.bwlimit:
             cmd.extend(["--bwlimit", self.bwlimit])

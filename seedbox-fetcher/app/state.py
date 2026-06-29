@@ -131,11 +131,13 @@ class CurrentPull:
     dest: str = ""
     bytes_total: int = 0
     bytes_transferred: int = 0
+    bytes_on_disk: int = 0          # measured by du-style scan of dest
     percent: float = 0.0
     speed_bps: float = 0.0
     eta_seconds: int = 0
     started_at: float = 0.0
     last_stats_at: float = 0.0
+    last_disk_at: float = 0.0
     cancelled: bool = False
 
 
@@ -165,15 +167,24 @@ class AppState:
         SSE endpoint knows when to emit)
     """
 
-    def __init__(self, persistent: PersistentState, log_ring_size: int = 500):
+    def __init__(self, persistent: PersistentState, log_ring_size: int = 500,
+                 speed_history_size: int = 60):
         self.persistent = persistent
         self.current_pull = CurrentPull()
         self.metrics = AppMetrics()
         self._lock = threading.RLock()
         self._log_ring: collections.deque[dict] = collections.deque(maxlen=log_ring_size)
+        # Last N samples of (timestamp, speed_bps) for the sparkline.
+        self._speed_history: collections.deque[tuple[float, float]] = collections.deque(
+            maxlen=speed_history_size
+        )
         self._sse_seq = 0
         self._sse_cond = threading.Condition()
         self.paused = False
+        # Reload signal for live config changes.
+        self._reload_requested = False
+        # Live overrides (set via /config page) - read by poller and worker on each cycle.
+        self.runtime: dict[str, Any] = {}
 
     # ----- log ring -----
 
@@ -221,6 +232,7 @@ class AppState:
                 started_at=time.time(),
                 last_stats_at=time.time(),
             )
+            self._speed_history.clear()
         self._bump()
 
     def update_pull(self, bytes_transferred: int, percent: float,
@@ -231,6 +243,14 @@ class AppState:
             self.current_pull.speed_bps = speed_bps
             self.current_pull.eta_seconds = eta_seconds
             self.current_pull.last_stats_at = time.time()
+            self._speed_history.append((time.time(), float(speed_bps)))
+        self._bump()
+
+    def update_pull_disk(self, bytes_on_disk: int) -> None:
+        """Fallback updater: writes only the bytes-on-disk gauge."""
+        with self._lock:
+            self.current_pull.bytes_on_disk = bytes_on_disk
+            self.current_pull.last_disk_at = time.time()
         self._bump()
 
     def end_pull(self, success: bool, cancelled: bool, bytes_pulled: int) -> None:
@@ -283,6 +303,32 @@ class AppState:
             self.paused = paused
         self._bump()
 
+    # ----- runtime overrides -----
+
+    def set_runtime(self, **kwargs) -> None:
+        with self._lock:
+            for k, v in kwargs.items():
+                if v is None:
+                    self.runtime.pop(k, None)
+                else:
+                    self.runtime[k] = v
+        self._bump()
+
+    def get_runtime(self, key: str, default: Any = None) -> Any:
+        with self._lock:
+            return self.runtime.get(key, default)
+
+    def request_reload(self) -> None:
+        with self._lock:
+            self._reload_requested = True
+        self._bump()
+
+    def consume_reload(self) -> bool:
+        with self._lock:
+            r = self._reload_requested
+            self._reload_requested = False
+            return r
+
     # ----- snapshot for UI -----
 
     def snapshot(self) -> dict[str, Any]:
@@ -292,4 +338,5 @@ class AppState:
                 "current_pull": asdict(self.current_pull),
                 "paused": self.paused,
                 "sse_seq": self.sse_seq,
+                "speed_history": list(self._speed_history),
             }

@@ -23,7 +23,7 @@ services:
     ports:
       - "8765:8765"
     volumes:
-      - /mnt/user/appdata/fetcharr/seedbox-fetcher:/config:ro
+      - /mnt/user/appdata/fetcharr/seedbox-fetcher:/config:rw
       - /mnt/user/appdata/fetcharr/seedbox-fetcher/state:/state
       - /mnt/user/data:/data:rw
 

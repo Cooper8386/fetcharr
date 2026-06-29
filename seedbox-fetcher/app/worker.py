@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import logging
+import os
 import queue
 import shutil
 import threading
+from pathlib import Path
 
 from .config import Config
 from .notifier import Notifier
@@ -13,6 +15,30 @@ from .rclone import RcloneCopy
 from .state import AppState, PersistentState
 
 LOG = logging.getLogger("seedbox-fetcher.worker")
+
+
+def _du_bytes(path: Path) -> int:
+    total = 0
+    try:
+        for root, _dirs, files in os.walk(path, followlinks=False):
+            for f in files:
+                try:
+                    total += os.path.getsize(os.path.join(root, f))
+                except OSError:
+                    continue
+    except OSError:
+        return 0
+    return total
+
+
+def _disk_scanner(
+    dest: Path, app: AppState, stop: threading.Event, interval: float = 2.0
+) -> None:
+    """While stop is not set, periodically scan dest and update bytes_on_disk."""
+    while not stop.is_set():
+        if dest.exists():
+            app.update_pull_disk(_du_bytes(dest))
+        stop.wait(interval)
 
 
 def run_worker(
@@ -41,13 +67,15 @@ def run_worker(
                 f"pulling {job.key} ({job.bytes_total / 1024 / 1024 / 1024:.2f} GB) "
                 f"-> {job.dest}")
 
+        # Re-read tunables at job-start so live /config changes take effect
+        # on the next pull without a restart.
         copy = RcloneCopy(
             remote=cfg.rclone_remote,
             remote_path=job.remote_path,
             dest=job.dest,
-            transfers=cfg.rclone_transfers,
-            checkers=cfg.rclone_checkers,
-            bwlimit=cfg.rclone_bwlimit,
+            transfers=app.get_runtime("rclone_transfers", cfg.rclone_transfers),
+            checkers=app.get_runtime("rclone_checkers", cfg.rclone_checkers),
+            bwlimit=app.get_runtime("rclone_bwlimit", cfg.rclone_bwlimit),
             on_stats=lambda s: app.update_pull(
                 bytes_transferred=s["bytes_transferred"],
                 percent=s["percent"],
@@ -56,6 +84,13 @@ def run_worker(
             ),
             on_log=lambda level, msg: app.log(level, msg),
         )
+
+        # Disk-scan fallback so we still show progress if stats are silent.
+        scan_stop = threading.Event()
+        scanner = threading.Thread(
+            target=_disk_scanner, args=(job.dest, app, scan_stop), daemon=True
+        )
+        scanner.start()
 
         # Run rclone in a sub-thread so we can poll for cancel requests.
         result: dict = {}
@@ -75,6 +110,9 @@ def run_worker(
                 copy.terminate()
                 t.join(timeout=15)
                 break
+
+        scan_stop.set()
+        scanner.join(timeout=5)
 
         cancelled = app.is_cancel_requested()
         ok = result.get("ok", False)
