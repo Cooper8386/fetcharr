@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.2.1 — 2026-06-30
+
+### Fixed
+
+- **Re-pull button immediately got cutoff-skipped on pre-existing releases.**
+  Clicking re-pull would unmark `pulled`, but the next poll would re-run
+  every filter from scratch and mark the release `cutoff_skipped` again
+  because its mtime is older than your `cutoff_mtime`. Now a manual re-pull
+  sets a `force_pull` flag that bypasses the cutoff and arr-history filters
+  on the next poll. Stability gate still applies. The flag self-clears
+  when the pull succeeds; if you cancel mid-pull, the flag is preserved so
+  the next poll still honors your intent. To fully abandon a force-pull,
+  click "mark pulled" or "forget" instead.
+
 ## v0.2.0 — 2026-06-29
 
 ### Fixed

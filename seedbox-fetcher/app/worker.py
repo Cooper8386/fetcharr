@@ -130,8 +130,10 @@ def run_worker(
                     shutil.rmtree(job.dest)
             except Exception as e:
                 LOG.warning("could not clean partial dest %s: %s", job.dest, e)
-            # Allow re-pull on next cycle.
-            persistent.unmark_pulled(job.key)
+            # Allow re-pull on next cycle. Preserve any manual force_pull so
+            # the next poll doesn't re-cutoff-skip a user-initiated re-pull.
+            had_force = bool((persistent.get(job.key) or {}).get("force_pull"))
+            persistent.unmark_pulled(job.key, force=had_force)
             persistent.save()
             notifier.alert("Pull cancelled", job.key)
         elif ok:

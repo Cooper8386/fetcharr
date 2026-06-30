@@ -78,7 +78,7 @@ class PersistentState:
                 if mtime is not None:
                     entry["mtime"] = mtime
                 for flag in ("bootstrap", "cutoff_skipped", "arr_skipped",
-                             "manual_skip", "pulled_at"):
+                             "manual_skip", "pulled_at", "force_pull"):
                     if prev and flag in prev:
                         entry[flag] = prev[flag]
                 self.data[key] = entry
@@ -95,10 +95,12 @@ class PersistentState:
                 return
             self.data[key]["pulled"] = True
             self.data[key]["pulled_at"] = time.time()
+            # Manual-override flags no longer apply once we've actually pulled.
+            self.data[key].pop("force_pull", None)
             for k, v in flags.items():
                 self.data[key][k] = v
 
-    def unmark_pulled(self, key: str) -> None:
+    def unmark_pulled(self, key: str, force: bool = False) -> None:
         with self._lock:
             if key not in self.data:
                 return
@@ -106,6 +108,8 @@ class PersistentState:
             for flag in ("pulled_at", "bootstrap", "cutoff_skipped",
                          "arr_skipped", "manual_skip"):
                 self.data[key].pop(flag, None)
+            if force:
+                self.data[key]["force_pull"] = True
 
     def forget(self, key: str) -> None:
         with self._lock:

@@ -107,7 +107,10 @@ def _poll_route(
         if existing and existing.get("pulled"):
             continue
 
-        if cutoff is not None and mtime is not None and mtime < cutoff:
+        # Manual re-pull bypasses cutoff and arr-history filters.
+        force_pull = bool(existing and existing.get("force_pull"))
+
+        if not force_pull and cutoff is not None and mtime is not None and mtime < cutoff:
             LOG.info("cutoff-skip %s", key)
             app.log("info", f"cutoff-skip {key}")
             persistent.observe(key, int(entry.get("Size", 0)), 0, mtime, now)
@@ -132,7 +135,7 @@ def _poll_route(
             persistent.mark_pulled(key)
             continue
 
-        if cfg.arr_history_check_enabled and cfg.arr_instances:
+        if not force_pull and cfg.arr_history_check_enabled and cfg.arr_instances:
             skip, reason = arr_already_handled(
                 cfg.arr_instances, name, cfg.arr_history_grace_minutes
             )

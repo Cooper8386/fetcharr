@@ -247,7 +247,8 @@ def build_app(cfg: Config, persistent: PersistentState, app_state: AppState) -> 
         key = f"{route_name}/{release_name}"
         if not persistent.get(key):
             raise HTTPException(404, f"unknown key {key!r}")
-        persistent.unmark_pulled(key)
+        # force=True so the next poll bypasses cutoff + arr-history filters.
+        persistent.unmark_pulled(key, force=True)
         persistent.save()
         # Also remove from disk so a re-pull lands fresh.
         dest = None
